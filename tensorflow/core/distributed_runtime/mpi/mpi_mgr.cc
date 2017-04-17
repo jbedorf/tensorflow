@@ -77,8 +77,7 @@ void MPIRendezvousMgr::addRequest(MPIRecvTensorRequest mReq,
     CHECK(s.ok()) << "src device not found";
 
     // Control if shape and data should be send together or if we can optimize
-    // it
-    // in two different transfers, thereby reducing memory copies
+    // it in two different transfers, thereby reducing memory copies
     bool doOptimalTransfer = true;
     if (!DataTypeCanUseMemcpy(val.dtype())) doOptimalTransfer = false;
     if (val.TotalBytes() < 1024) doOptimalTransfer = false;
