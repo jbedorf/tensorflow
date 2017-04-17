@@ -32,8 +32,27 @@ class MPIUtils {
   }
   std::map<std::string, int> name2id;
 
+  void InitMPI() {
+    // Initialize the MPI environment if that hasn't been done
+    int flag = 0;
+    MPICheck(MPI_Initialized(&flag));
+    if (!flag) {
+      MPICheck(MPI_Init_thread(0, 0, MPI_THREAD_SINGLE, &flag));
+      int procId = 0, nProcs = 1, len = -1;
+      char procName[128];
+      MPICheck(MPI_Comm_rank(MPI_COMM_WORLD, &procId));
+      MPICheck(MPI_Comm_size(MPI_COMM_WORLD, &nProcs));
+      MPICheck(MPI_Get_processor_name(procName, &len));
+      fprintf(stderr,
+              "MPI Environment initialised. Process id: %d Total processes: %d "
+              "|| Hostname: %s \n",
+              procId, nProcs, procName);
+    }
+  }
+
  public:
   MPIUtils(const WorkerEnv* env) {
+    InitMPI();
     // Connect the MPI process IDs to the worker names that are used by TF
     // Gather the names of all the active processes (name can't be longer than
     // 128 bytes)

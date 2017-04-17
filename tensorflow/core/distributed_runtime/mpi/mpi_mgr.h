@@ -25,30 +25,22 @@ class MPISendTensorCall {
 
   MPI_Request msg1;
   MPI_Request msg2;
-  int done1;  // Int instead of bool for easier isFinished logic
+  int done1;  // Int instead of bool for simpler isFinished logic
   int done2;
   MPIRecvTensorResponse mRes;
+  Notification n;
 
  public:
   MPISendTensorCall()
       : sendBuff(nullptr), sendBuff2(nullptr), done1(0), done2(1) {}
 
   ~MPISendTensorCall() {
+    n.Notify();
     delete[] sendBuff;
     delete[] sendBuff2;
   }
 
-  MPISendTensorCall(MPISendTensorCall&& o)
-      : sendBuff(o.sendBuff),
-        sendBuff2(o.sendBuff2),
-        msg1(o.msg1),
-        msg2(o.msg2),
-        done1(o.done1),
-        done2(o.done2),
-        mRes(o.mRes) {
-    o.sendBuff = nullptr;
-    o.sendBuff2 = nullptr;
-  }
+  MPISendTensorCall(MPISendTensorCall&&) = delete;
 
   void Init(const Rendezvous::ParsedKey& parsed, const int64 step_id,
             const bool is_dead) {
@@ -136,9 +128,9 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
  private:
   TF_DISALLOW_COPY_AND_ASSIGN(MPIRendezvousMgr);
 
-  typedef std::function<void(const Status&, const Rendezvous::Args&,
-                             const Rendezvous::Args&, const Tensor&, const bool,
-                             MPISendTensorCall& mpiReq)> mpiRecvTensorCallBack;
+  typedef std::function<MPISendTensorCall*(
+      const Status&, const Rendezvous::Args&, const Rendezvous::Args&,
+      const Tensor&, const bool, MPISendTensorCall*)> MPIRecvTensorCallBack;
 
   void addRequest(MPIRecvTensorRequest, const int);
 
@@ -148,38 +140,35 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
 
   mutex msq_;
   mutex mrq_;
-  std::queue<std::pair<std::string, std::function<void(MPISendTensorCall&)>>>
+  std::queue<std::pair<std::string, std::function<MPISendTensorCall*()>>>
       sendQueue GUARDED_BY(msq_);
   std::queue<std::pair<std::string, std::function<void()>>> requestQueue
       GUARDED_BY(mrq_);
-  std::map<int64, std::unordered_map<std::string, MPIRendezvousCall*>>
-      recvTensorList;
+  std::map<int64,
+           std::unordered_map<std::string, std::shared_ptr<MPIRendezvousCall>>>
+      recvTensorList GUARDED_BY(mrq_);
 
   void runThread() {
-    std::list<MPISendTensorCall> runningSends;
+    std::list<std::unique_ptr<MPISendTensorCall>> runningSends;
 
     while (1) {
 
       MPI_Message msg;
       MPI_Status status;
-      int flag = 0;
-
+      int flag = 0, incSize = 0;
       // Check for incoming Tensor requests
       {
         // Receive the header message, probe as size is variable
         MPICheck(MPI_Improbe(MPI_ANY_SOURCE, TAG_REQTENSOR, MPI_COMM_WORLD,
                              &flag, &msg, &status));
         if (flag) {
-          int incSize, mpi_dst;
           MPICheck(MPI_Get_count(&status, MPI_CHAR, &incSize));
           std::vector<char> reqBuff(incSize);
           MPICheck(MPI_Mrecv(&reqBuff[0], incSize, MPI_CHAR, &msg, &status));
 
-          mpi_dst = status.MPI_SOURCE;
-
           MPIRecvTensorRequest mReq;
           mReq.ParseFromArray(&reqBuff[0], reqBuff.size());
-          this->addRequest(mReq, mpi_dst);
+          this->addRequest(mReq, status.MPI_SOURCE);
         }  // flag
       }    // section
 
@@ -189,7 +178,6 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
         MPICheck(MPI_Improbe(MPI_ANY_SOURCE, TAG_SENDTENSOR, MPI_COMM_WORLD,
                              &flag, &msg, &status));
         if (flag) {
-          int incSize;
           MPICheck(MPI_Get_count(&status, MPI_CHAR, &incSize));
           std::vector<char> resBuff(incSize);
           MPICheck(MPI_Mrecv(&resBuff[0], incSize, MPI_CHAR, &msg, &status));
@@ -199,33 +187,32 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
           const int64 step_id = mRes.step_id();
           std::string key = mRes.key();
 
-          MPIRendezvousCall* call = nullptr;
+          std::shared_ptr<MPIRendezvousCall> call;
           mrq_.lock();
           if (recvTensorList.find(step_id) == recvTensorList.end()) {
-            fprintf(stderr, "Key step_id not found?? \n");
+            LOG(FATAL) << "Step not found in recvTensorList, step: " << step_id;
             abort();
           }
           if (recvTensorList[step_id].find(key) !=
               recvTensorList[step_id].end())
             call = recvTensorList[step_id][key];
           else {
-            fprintf(stderr, "Key not found??? \n");
+            LOG(FATAL) << "Key not found in recvTensorList, key: " << key;
             abort();
           }
           mrq_.unlock();
 
-          if (call) call->recvCB(mRes);
+          call->recvCB(mRes);
 
           mrq_.lock();
-          delete recvTensorList[step_id][key];
           recvTensorList[step_id].erase(key);
           mrq_.unlock();
         }
       }
 
       // Remove sends that have been completed
-      runningSends.remove_if([](MPISendTensorCall& i) {
-        return i.isFinished();
+      runningSends.remove_if([](std::unique_ptr<MPISendTensorCall>& i) {
+        return i->isFinished();
       });
 
       // send a Tensor request
@@ -242,12 +229,11 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
       // Send a Tensor response
       msq_.lock();
       if (!sendQueue.empty()) {
-        MPISendTensorCall call;
         auto x = sendQueue.front();
         sendQueue.pop();
         msq_.unlock();
-        x.second(call);
-        runningSends.push_back(std::move(call));
+        std::unique_ptr<MPISendTensorCall> p(x.second());
+        runningSends.push_back(std::move(p));
       } else {
         msq_.unlock();
       }
@@ -263,12 +249,12 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
     std::pair<std::string, std::function<void()>> req(key,
                                                       std::move(reqTensor));
     requestQueue.push(std::move(req));
-    recvTensorList[step_id][key] = rCall;
+    recvTensorList[step_id][key] = std::shared_ptr<MPIRendezvousCall>(rCall);
     mrq_.unlock();
   }
 
   void queueSendRequest(
-      std::pair<std::string, std::function<void(MPISendTensorCall&)>> req) {
+      std::pair<std::string, std::function<MPISendTensorCall*()>> req) {
     msq_.lock();
     sendQueue.push(req);
     msq_.unlock();
