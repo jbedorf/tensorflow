@@ -69,7 +69,11 @@ class MPIRendezvousCall {
   std::function<void(MPIRecvTensorResponse)> recvCB;
 
   MPIRendezvousCall() : reqBuff(nullptr) {}
-  ~MPIRendezvousCall() { delete[] reqBuff; }
+  ~MPIRendezvousCall() {
+    MPI_Status status;
+    MPICheck(MPI_Wait(&mpiReq, &status));
+    delete[] reqBuff;
+  }
 
   void Init(const Rendezvous::ParsedKey& parsed, const int64 step_id) {
     req_.mutable_request()->set_step_id(step_id);
