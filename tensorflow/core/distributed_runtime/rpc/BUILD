@@ -32,6 +32,7 @@ load(
 )
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
+load("//tensorflow:tensorflow.bzl", "tf_mpi_opts") 
 
 # For platform specific build config
 load(
@@ -280,6 +281,7 @@ cc_library(
         "@grpc//:grpc++_unsecure",
         "@grpc//:grpc_unsecure",
     ],
+    copts = tf_mpi_opts(),
     alwayslink = 1,
 )
 
