@@ -138,7 +138,8 @@ toolchain {
     # Maybe we should enable https://gcc.gnu.org/wiki/DebugFission for opt or
     # even generally? However, that can't happen here, as it requires special
     # handling in Bazel.
-    compiler_flag: "-g0"
+    #compiler_flag: "-g0"
+    compiler_flag: "-g"
 
     # Conservative choice for -O
     # -O3 can increase binary size and even slow down the resulting binaries.

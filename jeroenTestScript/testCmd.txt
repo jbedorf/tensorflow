@@ -1,0 +1,1 @@
+MPI_PATH_DISABLED=1 mpirun -tag-output -np 2  python bwTest.py 

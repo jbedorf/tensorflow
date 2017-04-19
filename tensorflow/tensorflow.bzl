@@ -764,8 +764,10 @@ def tf_custom_op_library(name, srcs=[], gpu_srcs=[], deps=[]):
 
   check_deps(name=name+"_check_deps",
              deps=deps + if_cuda(cuda_deps),
-             disallowed_deps=["//tensorflow/core:framework",
-                              "//tensorflow/core:lib"])
+             disallowed_deps = [])
+
+               #disallowed_deps=["//tensorflow/core:framework",
+               #               "//tensorflow/core:lib"])
 
   native.cc_binary(name=name,
                    srcs=srcs,

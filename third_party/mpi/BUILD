@@ -18,6 +18,6 @@ cc_library(
     srcs = select({
         "//conditions:default": ["libmpi.so"],
     }),
-    hdrs = ["mpi.h", "mpi_portable_platform.h"],
+    hdrs = ["mpi.h", "mpi_portable_platform.h", "mpio.h", "mpicxx.h"],
     visibility = ["//visibility:public"],
 )

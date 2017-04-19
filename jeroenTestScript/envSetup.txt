@@ -1,0 +1,3 @@
+cd ~/codes/tensorflowIBOMPI-Source/jeroenTestScript/
+export PYTHONPATH=/home/jbedorf/codes/tensorflowIBOMPI-build/lib/python2.7/site-packages
+mpirun -np 2 python bwTest.py 

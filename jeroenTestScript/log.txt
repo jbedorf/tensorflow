@@ -1,0 +1,164 @@
+I am rank: 0 on host: GPUNode002 
+
+I am rank: 1 on host: GPUNode002 
+
+Launching Server
+--------------------------------------------------------------------------
+WARNING: There are more than one active ports on host 'GPUNode002', but the
+default subnet GID prefix was detected on more than one of these
+ports.  If these ports are connected to different physical IB
+networks, this configuration will fail in Open MPI.  This version of
+Open MPI requires that every physically separate IB subnet that is
+used between connected MPI processes must have different subnet ID
+values.
+
+Please see this FAQ entry for more details:
+
+  http://www.open-mpi.org/faq/?category=openfabrics#ofa-default-subnet-gid
+
+NOTE: You can turn off this warning by setting the MCA parameter
+      btl_openib_warn_default_gid_prefix to 0.
+--------------------------------------------------------------------------
+MPI THREAD MULTIPLE IS OK 
+MPI Environment initialised. Process id: 0 Total processes: 2 || Hostname: GPUNode002 
+MPI THREAD MULTIPLE IS OK 
+MPI Environment initialised. Process id: 1 Total processes: 2 || Hostname: GPUNode002 
+2017-04-15 10:36:13.225087: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use SSE4.1 instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225121: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use SSE4.2 instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225128: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use AVX instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225107: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use SSE4.1 instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225133: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use AVX2 instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225139: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use FMA instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225140: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use SSE4.2 instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225149: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use AVX instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225157: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use AVX2 instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.225165: W tensorflow/core/platform/cpu_feature_guard.cc:45] The TensorFlow library wasn't compiled to use FMA instructions, but these are available on your machine and could speed up CPU computations.
+2017-04-15 10:36:13.343151: E tensorflow/stream_executor/cuda/cuda_driver.cc:405] failed call to cuInit: CUDA_ERROR_NO_DEVICE
+2017-04-15 10:36:13.343187: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:158] retrieving CUDA diagnostic information for host: GPUNode002
+2017-04-15 10:36:13.343196: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:165] hostname: GPUNode002
+2017-04-15 10:36:13.343237: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:189] libcuda reported version is: 375.20.0
+2017-04-15 10:36:13.343264: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:363] driver version file contents: """NVRM version: NVIDIA UNIX x86_64 Kernel Module  375.20  Tue Nov 15 16:49:10 PST 2016
+GCC version:  gcc version 4.8.5 20150623 (Red Hat 4.8.5-11) (GCC) 
+"""
+2017-04-15 10:36:13.343288: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:193] kernel reported version is: 375.20.0
+2017-04-15 10:36:13.343324: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:300] kernel version seems to match DSO: 375.20.0
+2017-04-15 10:36:13.345603: E tensorflow/stream_executor/cuda/cuda_driver.cc:405] failed call to cuInit: CUDA_ERROR_NO_DEVICE
+2017-04-15 10:36:13.345637: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:158] retrieving CUDA diagnostic information for host: GPUNode002
+2017-04-15 10:36:13.345645: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:165] hostname: GPUNode002
+2017-04-15 10:36:13.345682: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:189] libcuda reported version is: 375.20.0
+2017-04-15 10:36:13.345708: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:363] driver version file contents: """NVRM version: NVIDIA UNIX x86_64 Kernel Module  375.20  Tue Nov 15 16:49:10 PST 2016
+GCC version:  gcc version 4.8.5 20150623 (Red Hat 4.8.5-11) (GCC) 
+"""
+2017-04-15 10:36:13.345736: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:193] kernel reported version is: 375.20.0
+2017-04-15 10:36:13.345743: I tensorflow/stream_executor/cuda/cuda_diagnostics.cc:300] kernel version seems to match DSO: 375.20.0
+2017-04-15 10:36:13.350913: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:200] Initialize GrpcChannelCache for job master -> {0 -> localhost:12220}
+2017-04-15 10:36:13.350929: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:200] Initialize GrpcChannelCache for job worker -> {0 -> localhost:12222}
+2017-04-15 10:36:13.353264: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:200] Initialize GrpcChannelCache for job master -> {0 -> localhost:12220}
+2017-04-15 10:36:13.353280: I tensorflow/core/distributed_runtime/rpc/grpc_channel.cc:200] Initialize GrpcChannelCache for job worker -> {0 -> localhost:12222}
+2017-04-15 10:36:13.354465: I ./tensorflow/core/distributed_runtime/mpi/mpi_utils.h:53] MPI process-ID to gRPC server name map: 
+
+2017-04-15 10:36:13.354491: I ./tensorflow/core/distributed_runtime/mpi/mpi_utils.h:57] Process: 0	gRPC-name: /job:worker/replica:0/task:0
+
+2017-04-15 10:36:13.354497: I ./tensorflow/core/distributed_runtime/mpi/mpi_utils.h:57] Process: 1	gRPC-name: /job:master/replica:0/task:0
+
+runThread ID:  46916922586880
+runThread ID:  46915716728576
+2017-04-15 10:36:13.354616: I tensorflow/core/distributed_runtime/rpc/grpc_server_lib.cc:255] Started server with target: grpc://localhost:12220
+2017-04-15 10:36:13.354630: I tensorflow/core/distributed_runtime/rpc/grpc_server_lib.cc:255] Started server with target: grpc://localhost:12222
+WARNING:tensorflow:From bwTest.py:73: initialize_all_variables (from tensorflow.python.ops.variables) is deprecated and will be removed after 2017-03-02.
+Instructions for updating:
+Use `tf.global_variables_initializer` instead.
+2017-04-15 10:36:13.393578: I tensorflow/core/distributed_runtime/master_session.cc:1012] Start master session 3342cd7afc22603a with config: 
+graph_options {
+  optimizer_options {
+    opt_level: L0
+  }
+}
+
+Test-thread 46915714627328 sleeping...
+thread 46915712526080 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916920485632 sleeping...
+MPI Send queued 
+thread 46916916283136 sleeping...
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916918384384 sleeping...
+thread 46916920485632 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916918384384 sleeping...
+thread 46916920485632 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916903675648 sleeping...
+MPI Send queued 
+Found something in queue 
+thread 46916903675648 sleeping...
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916918384384 sleeping...
+thread 46916920485632 sleeping...
+Test-thread 46916918384384 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+thread 46916918384384 sleeping...
+Test-thread 46916920485632 sleeping...
+thread 46916903675648 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916920485632 sleeping...
+thread 46916903675648 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916920485632 sleeping...
+thread 46916903675648 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916920485632 sleeping...
+thread 46916903675648 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Test-thread 46916920485632 sleeping...
+thread 46916903675648 sleeping...
+MPI Send queued 
+Found something in queue 
+MPI Sending 
+Destructor MPISendTensorCall
+Notification received
+Adding data in 100 MB chunks
+Local rate:       0.00 MB per second
+Distributed rate: 0.21 MB per second

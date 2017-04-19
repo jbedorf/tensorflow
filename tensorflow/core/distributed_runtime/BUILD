@@ -106,6 +106,7 @@ cc_library(
         ":worker_interface",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
+        "//tensorflow/core/distributed_runtime/mpi:mpi_mgr",
     ],
 )
 
