@@ -149,6 +149,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_verbs_support",
+    values = {"define": "with_verbs_support=true"},
+    visibility = ["//visibility:public"],
+)
+
 package_group(
     name = "internal",
     packages = ["//tensorflow/..."],
@@ -252,6 +258,7 @@ filegroup(
         "//tensorflow/contrib/opt:all_files",
         "//tensorflow/contrib/rnn:all_files",
         "//tensorflow/contrib/saved_model:all_files",
+        "//tensorflow/contrib/saved_model/cc/saved_model:all_files",
         "//tensorflow/contrib/seq2seq:all_files",
         "//tensorflow/contrib/session_bundle:all_files",
         "//tensorflow/contrib/session_bundle/example:all_files",
@@ -261,6 +268,7 @@ filegroup(
         "//tensorflow/contrib/solvers:all_files",
         "//tensorflow/contrib/sparsemax:all_files",
         "//tensorflow/contrib/specs:all_files",
+        "//tensorflow/contrib/staging:all_files",
         "//tensorflow/contrib/stat_summarizer:all_files",
         "//tensorflow/contrib/stateless:all_files",
         "//tensorflow/contrib/tensor_forest:all_files",
@@ -270,6 +278,7 @@ filegroup(
         "//tensorflow/contrib/tfprof/python/tools/tfprof:all_files",
         "//tensorflow/contrib/training:all_files",
         "//tensorflow/contrib/util:all_files",
+        "//tensorflow/contrib/verbs:all_files",
         "//tensorflow/contrib/xla_tf_graph:all_files",
         "//tensorflow/core:all_files",
         "//tensorflow/core/debug:all_files",
@@ -318,6 +327,7 @@ filegroup(
         "//tensorflow/tensorboard/components/vz_line_chart:all_files",
         "//tensorflow/tensorboard/components/vz_line_chart/demo:all_files",
         "//tensorflow/tensorboard/components/vz_projector:all_files",
+        "//tensorflow/tensorboard/components/vz_projector_d3v4:all_files",
         "//tensorflow/tensorboard/components/vz_sorting:all_files",
         "//tensorflow/tensorboard/components/vz_sorting/test:all_files",
         "//tensorflow/tensorboard/lib:all_files",
