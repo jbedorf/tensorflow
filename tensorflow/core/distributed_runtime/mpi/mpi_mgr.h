@@ -5,6 +5,12 @@
 #include <queue>
 #include <thread>
 #include <list>
+#include <string>
+#include <memory>
+#include <map>
+#include <unordered_map>
+#include <utility>
+#include <vector>
 
 #include "tensorflow/core/distributed_runtime/mpi/mpi_utils.h"
 #include "tensorflow/core/distributed_runtime/base_rendezvous_mgr.h"
@@ -86,8 +92,12 @@ class MPIRendezvousCall {
 
 class MPIRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  MPIRemoteRendezvous(const WorkerEnv* env, const string& worker_name, int64 step_id, const MPIUtils* util, BaseRendezvousMgr *mgr_)
-      : BaseRemoteRendezvous(env, worker_name, step_id, false), mpiUtils_(util),rendezvous_mgr(mgr_) {}
+  MPIRemoteRendezvous(const WorkerEnv* env, const string& worker_name,
+                      int64 step_id, const MPIUtils* util,
+                      BaseRendezvousMgr* mgr_)
+      : BaseRemoteRendezvous(env, worker_name, step_id, false),
+        mpiUtils_(util),
+        rendezvous_mgr(mgr_) {}
 
  protected:
   void RecvFromRemoteAsync(const Rendezvous::ParsedKey& parsed,
@@ -95,12 +105,10 @@ class MPIRemoteRendezvous : public BaseRemoteRendezvous {
                            DoneCallback done) override;
 
  private:
-  ~MPIRemoteRendezvous() override {
-    // TODO Clean up anything left from this step
-  }
+  ~MPIRemoteRendezvous() override;
 
   const MPIUtils* mpiUtils_;
-  BaseRendezvousMgr *rendezvous_mgr;
+  BaseRendezvousMgr* rendezvous_mgr;
 
   TF_DISALLOW_COPY_AND_ASSIGN(MPIRemoteRendezvous);
 };
@@ -108,19 +116,18 @@ class MPIRemoteRendezvous : public BaseRemoteRendezvous {
 class MPIRendezvousMgr : public BaseRendezvousMgr {
  public:
   explicit MPIRendezvousMgr(const WorkerEnv* env, const string& worker_name,
-          WorkerCacheInterface* worker_cache);
+                            WorkerCacheInterface* worker_cache);
   ~MPIRendezvousMgr() {
     delete mpiUtils_;
     fprintf(stderr, "DELETE MANAGER \n");
 
-    // TODO stop requestThread
+    // TODO(jbedorf) stop requestThread
 
     MPICheck(MPI_Finalize());
   }
 
  protected:
-  BaseRemoteRendezvous* Create(int64 step_id,
-                               const WorkerEnv* worker_env,
+  BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env,
                                const string& session_name) override;
 
   const WorkerEnv* worker_env_2;
@@ -132,135 +139,105 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
       const Status&, const Rendezvous::Args&, const Rendezvous::Args&,
       const Tensor&, const bool, MPISendTensorCall*)> MPIRecvTensorCallBack;
 
-  void addRequest(MPIRecvTensorRequest, const int);
+  typedef std::pair<std::string, std::function<void()>> requestQueueEntry;
+  typedef std::pair<std::string, std::function<MPISendTensorCall*()>>
+      sendQueueEntry;
 
-  MPIUtils* mpiUtils_;
 
-  std::thread requestThread;
 
   mutex msq_;
+  std::queue<sendQueueEntry> sendQueue GUARDED_BY(msq_);
   mutex mrq_;
-  std::queue<std::pair<std::string, std::function<MPISendTensorCall*()>>>
-      sendQueue GUARDED_BY(msq_);
-  std::queue<std::pair<std::string, std::function<void()>>> requestQueue
-      GUARDED_BY(mrq_);
+  std::queue<requestQueueEntry> requestQueue GUARDED_BY(mrq_);
   std::map<int64,
            std::unordered_map<std::string, std::shared_ptr<MPIRendezvousCall>>>
       recvTensorList GUARDED_BY(mrq_);
+  void addRequest(MPIRecvTensorRequest, const int);
 
-  void runThread() {
-    std::list<std::unique_ptr<MPISendTensorCall>> runningSends;
 
-    while (1) {
+  std::thread requestThread;
+  void MPIBackgroundThread();
 
-      MPI_Message msg;
-      MPI_Status status;
-      int flag = 0, incSize = 0;
-      // Check for incoming Tensor requests
-      {
-        // Receive the header message, probe as size is variable
-        MPICheck(MPI_Improbe(MPI_ANY_SOURCE, TAG_REQTENSOR, MPI_COMM_WORLD,
-                             &flag, &msg, &status));
-        if (flag) {
-          MPICheck(MPI_Get_count(&status, MPI_CHAR, &incSize));
-          std::vector<char> reqBuff(incSize);
-          MPICheck(MPI_Mrecv(&reqBuff[0], incSize, MPI_CHAR, &msg, &status));
-
-          MPIRecvTensorRequest mReq;
-          mReq.ParseFromArray(&reqBuff[0], reqBuff.size());
-          this->addRequest(mReq, status.MPI_SOURCE);
-        }  // flag
-      }    // section
-
-      // Check for incoming Tensor reply
-      {
-        // Receive the Tensor reply message, probe as size is variable
-        MPICheck(MPI_Improbe(MPI_ANY_SOURCE, TAG_SENDTENSOR, MPI_COMM_WORLD,
-                             &flag, &msg, &status));
-        if (flag) {
-          MPICheck(MPI_Get_count(&status, MPI_CHAR, &incSize));
-          std::vector<char> resBuff(incSize);
-          MPICheck(MPI_Mrecv(&resBuff[0], incSize, MPI_CHAR, &msg, &status));
-
-          MPIRecvTensorResponse mRes;
-          mRes.ParseFromArray(&resBuff[0], resBuff.size());
-          const int64 step_id = mRes.step_id();
-          std::string key = mRes.key();
-
-          std::shared_ptr<MPIRendezvousCall> call;
-          mrq_.lock();
-          if (recvTensorList.find(step_id) == recvTensorList.end()) {
-            LOG(FATAL) << "Step not found in recvTensorList, step: " << step_id;
-            abort();
-          }
-          if (recvTensorList[step_id].find(key) !=
-              recvTensorList[step_id].end())
-            call = recvTensorList[step_id][key];
-          else {
-            LOG(FATAL) << "Key not found in recvTensorList, key: " << key;
-            abort();
-          }
-          mrq_.unlock();
-
-          call->recvCB(mRes);
-
-          mrq_.lock();
-          recvTensorList[step_id].erase(key);
-          mrq_.unlock();
-        }
-      }
-
-      // Remove sends that have been completed
-      runningSends.remove_if([](std::unique_ptr<MPISendTensorCall>& i) {
-        return i->isFinished();
-      });
-
-      // send a Tensor request
-      mrq_.lock();
-      if (!requestQueue.empty()) {
-        auto x = requestQueue.front();
-        requestQueue.pop();
-        mrq_.unlock();
-        x.second();
-      } else {
-        mrq_.unlock();
-      }
-
-      // Send a Tensor response
-      msq_.lock();
-      if (!sendQueue.empty()) {
-        auto x = sendQueue.front();
-        sendQueue.pop();
-        msq_.unlock();
-        std::unique_ptr<MPISendTensorCall> p(x.second());
-        runningSends.push_back(std::move(p));
-      } else {
-        msq_.unlock();
-      }
-        
-      // std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-  }
+  MPIUtils* mpiUtils_;
 
  public:
   void queueRequest(std::string key, int64 step_id,
                     std::function<void()> reqTensor, MPIRendezvousCall* rCall) {
-    mrq_.lock();
-    std::pair<std::string, std::function<void()>> req(key,
-                                                      std::move(reqTensor));
+    mutex_lock l(mrq_);
+    requestQueueEntry req(key, std::move(reqTensor));
     requestQueue.push(std::move(req));
     recvTensorList[step_id][key] = std::shared_ptr<MPIRendezvousCall>(rCall);
-    mrq_.unlock();
+    // TODO(jbedorf) remove the move above here
   }
 
-  void queueSendRequest(
-      std::pair<std::string, std::function<MPISendTensorCall*()>> req) {
-    msq_.lock();
+  void queueSendRequest(sendQueueEntry req) {
+    mutex_lock l(msq_);
     sendQueue.push(req);
-    msq_.unlock();
   }
 
+  bool getRecvCall(const int64 step_id, const std::string& key,
+                   std::shared_ptr<MPIRendezvousCall>* call) {
+    mutex_lock l(mrq_);
+    if (recvTensorList.find(step_id) == recvTensorList.end()) {
+      LOG(FATAL) << "Step not found in recvTensorList, step: " << step_id;
+      abort();
+    }
+    if (recvTensorList[step_id].find(key) != recvTensorList[step_id].end()) {
+      *call = recvTensorList[step_id][key];
+    } else {
+      LOG(FATAL) << "Key not found in recvTensorList, key: " << key;
+      abort();
+    }
+  }
+
+  void removeRecvCall(const int64 step_id, const std::string& key) {
+    mutex_lock l(mrq_);
+    recvTensorList[step_id].erase(key);
+  }
+
+  void removeStepID(const int64 step_id) {
+    mutex_lock l(mrq_);
+    recvTensorList.erase(step_id);
+    // TODO(jbedorf) Should we verify that the step_id is clear before remove?
+  }
+
+  bool getRequest(requestQueueEntry* req) {
+    mutex_lock l(mrq_);
+    if (!requestQueue.empty()) {
+      *req = requestQueue.front();
+      requestQueue.pop();
+      return true;
+    }
+    return false;
+  }
+
+  bool getResponse(sendQueueEntry* send) {
+    mutex_lock l(msq_);
+    if (!sendQueue.empty()) {
+      *send = sendQueue.front();
+      sendQueue.pop();
+      return true;
+    }
+    return false;
+  }
+
+  template <typename T>
+  int probeForData(const int tag, MPI_Status* status, T* obj) {
+    int flag = 0, incSize = 0;
+    MPI_Message msg;
+
+    // Receive the message, probe as size is variable
+    MPICheck(
+        MPI_Improbe(MPI_ANY_SOURCE, tag, MPI_COMM_WORLD, &flag, &msg, status));
+    if (flag) {
+      MPICheck(MPI_Get_count(status, MPI_CHAR, &incSize));
+      std::vector<char> reqBuff(incSize);
+      MPICheck(MPI_Mrecv(&reqBuff[0], incSize, MPI_CHAR, &msg, status));
+      obj->ParseFromArray(&reqBuff[0], reqBuff.size());
+    }
+    return flag;
+  }
 };  // MPIRendezvousMgr
-}  // namespace
+}  // namespace tensorflow
 
 #endif

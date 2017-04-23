@@ -48,7 +48,7 @@ package(default_visibility = [
 
 cc_library(
     name = "mpi_mgr",
-    srcs = ["mpi_mgr.cc"],
+    srcs = ["mpi_mgr.cc", "mpi_utils.cc"],
     hdrs = ["mpi_mgr.h", "mpi_utils.h"],
     deps = [
         "//tensorflow/core:core_cpu_internal",

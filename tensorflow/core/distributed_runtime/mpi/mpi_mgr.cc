@@ -1,15 +1,18 @@
 
+#include "tensorflow/core/distributed_runtime/mpi/mpi_mgr.h"
+
+#include <chrono>
+#include <functional>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "tensorflow/core/distributed_runtime/tensor_coding.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_util.h"
 #include "tensorflow/core/distributed_runtime/session_mgr.h"
-
-#include <chrono>
-#include <functional>
-#include <memory>
-
-#include "tensorflow/core/distributed_runtime/mpi/mpi_mgr.h"
 
 namespace tensorflow {
 
@@ -22,18 +25,17 @@ namespace tensorflow {
 void MPIRendezvousMgr::addRequest(MPIRecvTensorRequest mReq,
                                   const int mpi_dst) {
   const int64 step_id = mReq.request().step_id();
-  const string& key = mReq.request().rendezvous_key();
-  const int followUpTag = mReq.followuptag();
+  const std::string& key = mReq.request().rendezvous_key();
   Rendezvous::ParsedKey parsed;
   Status s = Rendezvous::ParseKey(key, &parsed);
 
-  MPIRecvTensorCallBack cb = [this, key, step_id, parsed, mpi_dst, followUpTag](
+  MPIRecvTensorCallBack cb = [this, mpi_dst](
       const Status& status, const Rendezvous::Args& send_args,
       const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead,
       MPISendTensorCall* mpiSC) {
-
-    // TODO this should be a loop over max size
-    MPICheck(MPI_Isend(mpiSC->sendBuff, (int)mpiSC->mRes.ByteSize(), MPI_CHAR,
+    // TODO(jbedorf) this should be a loop over max size
+    MPICheck(MPI_Isend(mpiSC->sendBuff,
+                       static_cast<int>(mpiSC->mRes.ByteSize()), MPI_CHAR,
                        mpi_dst, TAG_SENDTENSOR, MPI_COMM_WORLD, &mpiSC->msg1));
     mpiSC->done1 = 0;
 
@@ -45,20 +47,18 @@ void MPIRendezvousMgr::addRequest(MPIRecvTensorRequest mReq,
       // here
       // if(src_dev->tensorflow_gpu_device_info()) //memcpy to sendBuff2
 
-      // TODO this should be a loop over max size
-      MPICheck(MPI_Isend(temp, (int)nBytes, MPI_CHAR, mpi_dst, TAG_SENDTENSOR2,
-                         MPI_COMM_WORLD, &mpiSC->msg2));
+      // TODO(jbedorf)  this should be a loop over max size
+      MPICheck(MPI_Isend(temp, static_cast<int>(nBytes), MPI_CHAR, mpi_dst,
+                         TAG_SENDTENSOR2, MPI_COMM_WORLD, &mpiSC->msg2));
       mpiSC->done2 = 0;
     }
     return mpiSC;
   };
 
-  using namespace std::placeholders;
   // Wrapper around the read callback to place the callback on our queue
   Rendezvous::DoneCallback cb2 = [this, parsed, step_id, cb](
       const Status& status, const Rendezvous::Args& send_args,
       const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead) {
-
     if (!status.ok()) {
       std::cerr << "RecvLocal was not ok: " << parsed.FullKey()
                 << "  error: " << status.error_message() << std::endl;
@@ -83,6 +83,8 @@ void MPIRendezvousMgr::addRequest(MPIRecvTensorRequest mReq,
     if (!DataTypeCanUseMemcpy(val.dtype())) doOptimalTransfer = false;
     if (val.TotalBytes() < 1024) doOptimalTransfer = false;
 
+    doOptimalTransfer = true;
+
     if (doOptimalTransfer) {
       // First send the Tensor description and in a follow up transfer the data
       mpiSC->mRes.mutable_response()->mutable_tensor()->set_dtype(val.dtype());
@@ -94,7 +96,6 @@ void MPIRendezvousMgr::addRequest(MPIRecvTensorRequest mReq,
       // Send the Tensor description and data in a single transfer
       if (src_dev->tensorflow_gpu_device_info() &&
           (!send_args.alloc_attrs.on_host())) {
-
         Notification n;
         GPUUtil::SetProtoFromGPU(
             val, src_dev, send_args.device_context,
@@ -116,8 +117,7 @@ void MPIRendezvousMgr::addRequest(MPIRecvTensorRequest mReq,
     std::function<MPISendTensorCall*()> res =
         std::bind(cb, status, send_args, recv_args, val, is_dead, mpiSC);
 
-    std::pair<std::string, std::function<MPISendTensorCall*()> > req(
-        parsed.FullKey().ToString().c_str(), std::move(res));
+    sendQueueEntry req(parsed.FullKey().ToString().c_str(), std::move(res));
 
     this->queueSendRequest(req);
 
@@ -130,6 +130,66 @@ void MPIRendezvousMgr::addRequest(MPIRecvTensorRequest mReq,
   worker_env_2->compute_pool->Schedule([this, step_id, parsed, cb2]() {
     this->RecvLocalAsync(step_id, parsed, cb2);
   });
+}
+
+MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env,
+                                   const string& worker_name,
+                                   WorkerCacheInterface* worker_cache)
+    : BaseRendezvousMgr(env, worker_name), worker_env_2(env) {
+
+  mpiUtils_ = new MPIUtils(worker_name);
+  requestThread = std::thread(&MPIRendezvousMgr::MPIBackgroundThread, this);
+}
+
+BaseRemoteRendezvous* MPIRendezvousMgr::Create(int64 step_id,
+                                               const WorkerEnv* worker_env,
+                                               const string& worker_name) {
+  return new MPIRemoteRendezvous(worker_env, worker_name, step_id, mpiUtils_,
+                                 this);
+}
+
+void MPIRendezvousMgr::MPIBackgroundThread() {
+  std::list<std::unique_ptr<MPISendTensorCall>> runningSends;
+
+  while (1) {
+    MPI_Status status;
+
+    // Check for incoming Tensor requests
+    MPIRecvTensorRequest mReq;
+    if (probeForData(TAG_REQTENSOR, &status, &mReq)) {
+      this->addRequest(mReq, status.MPI_SOURCE);
+    }
+
+    // Check for incoming Tensor reply
+    MPIRecvTensorResponse mRes;
+    if (probeForData(TAG_SENDTENSOR, &status, &mRes)) {
+      const int64 step_id = mRes.step_id();
+      std::string key = mRes.key();
+
+      std::shared_ptr<MPIRendezvousCall> call;
+      getRecvCall(step_id, key, &call);
+      call->recvCB(mRes);
+      removeRecvCall(step_id, key);
+    }
+
+    // Remove sends that have been completed
+    runningSends.remove_if([](std::unique_ptr<MPISendTensorCall>& i) {
+      return i->isFinished();
+    });
+
+    // send a Tensor request
+    requestQueueEntry req;
+    if (getRequest(&req)) req.second();
+
+    // Send a Tensor response
+    sendQueueEntry send;
+    if (getResponse(&send)) {
+      std::unique_ptr<MPISendTensorCall> p(send.second());
+      runningSends.push_back(std::move(p));
+    }
+
+    // std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
 }
 
 void MPIRemoteRendezvous::RecvFromRemoteAsync(
@@ -165,7 +225,6 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
   const int64 temp1 = step_id_;
   reqCall->recvCB = [this, parsed, recv_args, done, dst, temp1, reqCall](
       MPIRecvTensorResponse mRes) {
-
     Status s;
     Device* dst_device;
     if (s.ok()) {
@@ -187,34 +246,22 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
       const size_t nBytes = tr.tensor().TotalBytes();
       void* data = const_cast<void*>(DMAHelper::base(&tr.tensor()));
       MPI_Status status;
-      MPICheck(MPI_Recv(data, (int)nBytes, MPI_BYTE, dst, TAG_SENDTENSOR2,
-                        MPI_COMM_WORLD, &status));
+      MPICheck(MPI_Recv(data, static_cast<int>(nBytes), MPI_BYTE, dst,
+                        TAG_SENDTENSOR2, MPI_COMM_WORLD, &status));
       val = std::move(tr.tensor());
     }
 
     done(s, Args(), recv_args, val, mRes.response().is_dead());
   };
 
-
   MPIRendezvousMgr* mgr = dynamic_cast<MPIRendezvousMgr*>(this->rendezvous_mgr);
   mgr->queueRequest(parsed.FullKey().ToString(), step_id_, std::move(reqTensor),
                     reqCall);
 }
 
-MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env,
-                                   const string& worker_name,
-                                   WorkerCacheInterface* worker_cache)
-    : BaseRendezvousMgr(env, worker_name), worker_env_2(env) {
-
-  mpiUtils_ = new MPIUtils(worker_name);
-  requestThread = std::thread(&MPIRendezvousMgr::runThread, this);
+MPIRemoteRendezvous::~MPIRemoteRendezvous() {
+  MPIRendezvousMgr* mgr = dynamic_cast<MPIRendezvousMgr*>(this->rendezvous_mgr);
+  mgr->removeStepID(step_id_);
 }
 
-BaseRemoteRendezvous* MPIRendezvousMgr::Create(int64 step_id,
-                                               const WorkerEnv* worker_env,
-                                               const string& worker_name) {
-  return new MPIRemoteRendezvous(worker_env, worker_name, step_id, mpiUtils_, this);
-}
-
-
-}  // end namespace
+}  // namespace tensorflow
