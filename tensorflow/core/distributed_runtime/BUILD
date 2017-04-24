@@ -29,7 +29,6 @@ filegroup(
 
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_tests")
-load("//tensorflow:tensorflow.bzl", "tf_mpi_deps") 
 
 # For platform specific build config
 load(
@@ -149,8 +148,7 @@ cc_library(
         ":worker_session",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:lib_internal",
-    ] + 
-    tf_mpi_deps(),
+    ],
 )
 
 cc_library(

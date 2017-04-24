@@ -120,21 +120,6 @@ def if_x86(a):
       "//conditions:default": [],
   })
 
-def if_mpi(a):
-    return select({
-      "//tensorflow:linux_x86_64": a,
-      "//conditions:default": [],
-})
-
-
-def tf_mpi_opts():
-    return(if_mpi(["-DUSE_MPI=1"]))
-
-def tf_mpi_deps():
-  USE_MPI_DEPS=True
-  if USE_MPI_DEPS:
-    return ["//tensorflow/core/distributed_runtime/mpi:mpi_mgr",]
-  return []
 
 # LINT.IfChange
 def tf_copts():
@@ -144,8 +129,7 @@ def tf_copts():
       "-Wno-sign-compare",
       "-fno-exceptions",
   ] + if_cuda(["-DGOOGLE_CUDA=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_android_arm(
-      ["-mfpu=neon"]) + if_x86(["-msse3"]) + if_mpi(["-DUSE_MPI=1"]) +
-      select({
+      ["-mfpu=neon"]) + if_x86(["-msse3"]) + select({
           clean_dep("//tensorflow:android"): [
               "-std=c++11",
               "-DTF_LEAN_BINARY",

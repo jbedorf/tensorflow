@@ -46,10 +46,6 @@ limitations under the License.
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/public/session_options.h"
 
-#if USE_MPI
-    #include "tensorflow/core/distributed_runtime/mpi/mpi_mgr.h"
-#endif
-
 namespace tensorflow {
 
 namespace {
@@ -197,29 +193,10 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
   CHECK_NE(nullptr, worker_cache);
 
   // Set up worker environment.
-#if USE_MPI
-  bool disabledAtRuntime = false; 
-  const char* env = getenv("MPI_DISABLED");
-  if (env && env[0] == '1') disabledAtRuntime = true;
-
-  std::unique_ptr<RendezvousMgrInterface> rendezvous_mgr;
-  if(disabledAtRuntime) {
-    std::unique_ptr<RendezvousMgrInterface> mgr_(
-       new RpcRendezvousMgr(&worker_env_, name_prefix, worker_cache));
-    rendezvous_mgr = std::move(mgr_);
-  }
-  else
-  {
-    std::unique_ptr<RendezvousMgrInterface> mgr_(
-       new MPIRendezvousMgr(&worker_env_, name_prefix, worker_cache));
-    rendezvous_mgr = std::move(mgr_);
-  }
-#else
   std::unique_ptr<RendezvousMgrInterface> rendezvous_mgr(
       rendevous_mgr_func == nullptr ?
       new RpcRendezvousMgr(&worker_env_, name_prefix, worker_cache) :
       rendevous_mgr_func(&worker_env_, name_prefix, worker_cache));
-#endif
   worker_env_.session_mgr = new SessionMgr(
       &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
       std::unique_ptr<WorkerCacheInterface>(worker_cache),

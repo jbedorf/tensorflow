@@ -53,7 +53,7 @@ cc_library(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/mpi" 
+        "//third_party/mpi",
     ],
 )
 
@@ -62,21 +62,20 @@ cc_library(
     srcs = ["mpi_rendezvous_mgr.cc"],
     hdrs = ["mpi_rendezvous_mgr.h"],
     deps = [
+        ":mpi_msg_proto_cc",
+        ":mpi_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
         "//tensorflow/core:gpu_runtime",
-        "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
-        "//tensorflow/core/distributed_runtime:worker_env",
-        "//tensorflow/core/distributed_runtime:session_mgr",
-        ":mpi_utils",
-        ":mpi_msg_proto_cc",
+        "//tensorflow/core:lib",
         "//tensorflow/core:protos_cc",
         "//tensorflow/core:worker_proto_cc",
-        "//third_party/mpi" 
+        "//tensorflow/core/distributed_runtime:base_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime:session_mgr",
+        "//tensorflow/core/distributed_runtime:worker_env",
+        "//third_party/mpi",
     ],
 )
-
 
 cc_library(
     name = "mpi_server_lib",
@@ -84,8 +83,8 @@ cc_library(
     hdrs = ["mpi_server_lib.h"],
     linkstatic = 1,  # Seems to be needed since alwayslink is broken in bazel
     deps = [
-         ":mpi_rendezvous_mgr",
-         "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
+        ":mpi_rendezvous_mgr",
+        "//tensorflow/core/distributed_runtime/rpc:grpc_server_lib",
     ],
     alwayslink = 1,
 )
