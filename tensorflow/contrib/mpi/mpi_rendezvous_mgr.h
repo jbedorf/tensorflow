@@ -96,8 +96,7 @@ class MPIRendezvousCall {
 
   void Init(const Rendezvous::ParsedKey& parsed, const int64 step_id) {
     req_.set_step_id(step_id);
-    req_.set_rendezvous_key(parsed.FullKey().data(),
-                                               parsed.FullKey().size());
+    req_.set_rendezvous_key(parsed.FullKey().data(), parsed.FullKey().size());
     reqBuffSize = req_.ByteSize();
     reqBuff = new char[reqBuffSize];
     req_.SerializeToArray(reqBuff, reqBuffSize);
@@ -123,7 +122,6 @@ class MPIRemoteRendezvous : public BaseRemoteRendezvous {
 
   const MPIUtils* mpiUtils_;
   BaseRendezvousMgr* rendezvous_mgr;
-
 
   TF_DISALLOW_COPY_AND_ASSIGN(MPIRemoteRendezvous);
 };
@@ -171,21 +169,15 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
   void MPIBackgroundThread();
 
   MPIUtils* mpiUtils_;
-  
+
   bool doOptimalPath;
 
  public:
   void queueRequest(std::string key, int64 step_id,
                     std::function<void()> reqTensor, MPIRendezvousCall* rCall) {
     mutex_lock l(mrq_);
-    //requestQueueEntry req(key, std::move(reqTensor));
-    //requestQueue.push(std::move(req));
- 
     requestQueue.push(requestQueueEntry(key, std::move(reqTensor)));
- 
- 
     recvTensorList[step_id][key] = std::shared_ptr<MPIRendezvousCall>(rCall);
-    // TODO(jbedorf) remove the move above here
   }
 
   void queueSendRequest(sendQueueEntry req) {

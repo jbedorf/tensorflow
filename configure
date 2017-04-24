@@ -688,12 +688,7 @@ done
     
     
 if [ "$TF_NEED_MPI" == "1" ]; then
-
   write_to_bazelrc 'build --define with_mpi_support=true'
-
-
-  # Update Bazel build configuration.
-  sed -i -e "s/DUSE_MPI=0/DUSE_MPI=1/" tensorflow/tensorflow.bzl
 
   #Link the MPI header files
   ln -sf "${MPI_HOME}/include/mpi.h" third_party/mpi/mpi.h
@@ -705,7 +700,6 @@ if [ "$TF_NEED_MPI" == "1" ]; then
   if [ -e "${MPI_HOME}/include/mpi_portable_platform.h" ]; then
         #OpenMPI 
         ln -sf "${MPI_HOME}/include/mpi_portable_platform.h" third_party/mpi/
-    
         sed -i -e "s/MPI_LIB_IS_OPENMPI=False/MPI_LIB_IS_OPENMPI=True/" third_party/mpi/mpi.bzl
  else
         #MVAPICH / MPICH
@@ -721,14 +715,6 @@ if [ "$TF_NEED_MPI" == "1" ]; then
     echo "Cannot find the MPI library file in ${MPI_HOME}/lib "
     exit 1
   fi
-  
-  # Update the Bazel build configuration / C++ defines.
-  sed -i -e "s/DUSE_MPI=0/DUSE_MPI=1/" tensorflow/tensorflow.bzl
-  sed -i -e "s/USE_MPI_DEPS=False/USE_MPI_DEPS=True/" tensorflow/tensorflow.bzl
-else
-  # Update the Bazel build configuration / C++ defines.
-  sed -i -e "s/DUSE_MPI=1/DUSE_MPI=0/" tensorflow/tensorflow.bzl
-  sed -i -e "s/USE_MPI_DEPS=True/USE_MPI_DEPS=False/" tensorflow/tensorflow.bzl
 fi
 
 

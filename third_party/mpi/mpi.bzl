@@ -1,4 +1,3 @@
-
 #OpenMPI and Mvapich/mpich require different headers
 #based on the configuration options return one or the other
 
@@ -10,4 +9,3 @@ def mpi_hdr():
     else:
         hdrs = ["mpi.h",  "mpio.h", "mpicxx.h"]        #When using MVAPICH
     return hdrs
-
