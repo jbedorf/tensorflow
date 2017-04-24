@@ -101,7 +101,7 @@ GrpcServer::~GrpcServer() {
 }
 
 Status GrpcServer::Init(ServiceInitFunction service_func,
-                        RendezvousMgrCreationFunction rendevous_mgr_func) {
+                        RendezvousMgrCreationFunction rendezvous_mgr_func) {
   mutex_lock l(mu_);
   CHECK_EQ(state_, NEW);
   master_env_.env = env_;
@@ -194,9 +194,9 @@ Status GrpcServer::Init(ServiceInitFunction service_func,
 
   // Set up worker environment.
   std::unique_ptr<RendezvousMgrInterface> rendezvous_mgr(
-      rendevous_mgr_func == nullptr ?
+      rendezvous_mgr_func == nullptr ?
       new RpcRendezvousMgr(&worker_env_, name_prefix, worker_cache) :
-      rendevous_mgr_func(&worker_env_, name_prefix, worker_cache));
+      rendezvous_mgr_func(&worker_env_, name_prefix, worker_cache));
   worker_env_.session_mgr = new SessionMgr(
       &worker_env_, SessionMgr::WorkerNameFromServerDef(server_def_),
       std::unique_ptr<WorkerCacheInterface>(worker_cache),
