@@ -688,6 +688,10 @@ done
     
     
 if [ "$TF_NEED_MPI" == "1" ]; then
+
+  write_to_bazelrc 'build --define with_mpi_support=true'
+
+
   # Update Bazel build configuration.
   sed -i -e "s/DUSE_MPI=0/DUSE_MPI=1/" tensorflow/tensorflow.bzl
 
