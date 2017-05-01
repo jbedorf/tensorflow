@@ -30,224 +30,48 @@ limitations under the License.
 
 namespace tensorflow {
 
-/*
- * Add the request for one of our Tensors by a remote process
- * to the local send/table. The here created callback will
- * be called once the Tensor data has arrived and is
- * ready to be send to the remote requester.
- */
-void MPIRendezvousMgr::addRequest(RecvTensorRequest mReq,
-                                  const int mpi_dst) {
-  const int64 step_id = mReq.step_id();
-  const std::string& key = mReq.rendezvous_key();
-  Rendezvous::ParsedKey parsed;
-  Status s = Rendezvous::ParseKey(key, &parsed);
-
-  MPIRecvTensorCallBack cb = [this, mpi_dst](
-      const Status& status, const Rendezvous::Args& send_args,
-      const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead,
-      MPISendTensorCall* mpiSC) {
-    // TODO(jbedorf) this should be a loop over max size
-    MPICheck(MPI_Isend(mpiSC->sendBuff,
-                       static_cast<int>(mpiSC->mRes.ByteSize()), MPI_CHAR,
-                       mpi_dst, TAG_SENDTENSOR, MPI_COMM_WORLD, &mpiSC->msg1));
-    mpiSC->done1 = 0;
-
-    if (!mpiSC->mRes.singlesend()) {
-      const size_t nBytes = val.TotalBytes();
-      void* temp = const_cast<void*>(DMAHelper::base(&val));
-
-      // If the MPI environment is not GPU aware there should be a data transfer
-      // here
-      // if(src_dev->tensorflow_gpu_device_info()) //memcpy to sendBuff2
-
-      // TODO(jbedorf)  this should be a loop over max size
-      MPICheck(MPI_Isend(temp, static_cast<int>(nBytes), MPI_CHAR, mpi_dst,
-                         TAG_SENDTENSOR2, MPI_COMM_WORLD, &mpiSC->msg2));
-      mpiSC->done2 = 0;
-    }
-    return mpiSC;
-  };
-
-  // Wrapper around the read callback to place the callback on our queue
-  Rendezvous::DoneCallback cb2 = [this, parsed, step_id, cb](
-      const Status& status, const Rendezvous::Args& send_args,
-      const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead) {
-    if (!status.ok()) {
-      std::cerr << "RecvLocal was not ok: " << parsed.FullKey()
-                << "  error: " << status.error_message() << std::endl;
-      abort();
-      return;
-    }
-
-    VLOG(3) << "MPI Sending tensor " << parsed.FullKey()
-            << " @ step: " << step_id << std::endl;
-
-    auto mpiSC = new MPISendTensorCall();
-    mpiSC->Init(parsed, step_id, is_dead);
-
-    Device* src_dev = nullptr;
-    Status s = this->worker_env_2->device_mgr->LookupDevice(parsed.src_device,
-                                                            &src_dev);
-    CHECK(s.ok()) << "src device not found";
-
-    // Control if shape and data should be send together or if we can optimize
-    // it in two different transfers, thereby reducing memory copies
-    bool doOptimalTransfer = true;
-    if (!DataTypeCanUseMemcpy(val.dtype())) doOptimalTransfer = false;
-    if (val.TotalBytes() < 1024) doOptimalTransfer = false;
-
-    doOptimalTransfer = doOptimalTransfer && doOptimalPath;
-
-    if (doOptimalTransfer) {
-      // First send the Tensor description and in a follow up transfer the data
-      mpiSC->mRes.mutable_response()->mutable_tensor()->set_dtype(val.dtype());
-      val.shape().AsProto(mpiSC->mRes.mutable_response()
-                              ->mutable_tensor()
-                              ->mutable_tensor_shape());
-      mpiSC->mRes.set_singlesend(false);
-    } else {
-      // Send the Tensor description and data in a single transfer
-      if (src_dev->tensorflow_gpu_device_info() &&
-          (!send_args.alloc_attrs.on_host())) {
-        Notification n;
-        GPUUtil::SetProtoFromGPU(
-            val, src_dev, send_args.device_context,
-            mpiSC->mRes.mutable_response()->mutable_tensor(), is_dead,
-            [&n, &s](const Status& s_) {
-              s = s_;
-              n.Notify();
-            });
-        n.WaitForNotification();
-      } else {
-        val.AsProtoTensorContent(
-            mpiSC->mRes.mutable_response()->mutable_tensor());
-      }
-    }
-
-    mpiSC->sendBuff = new char[mpiSC->mRes.ByteSize()];
-    mpiSC->mRes.SerializeToArray(mpiSC->sendBuff, mpiSC->mRes.ByteSize());
-
-    std::function<MPISendTensorCall*()> res =
-        std::bind(cb, status, send_args, recv_args, val, is_dead, mpiSC);
-
-    sendQueueEntry req(parsed.FullKey().ToString().c_str(), std::move(res));
-
-    this->queueSendRequest(req);
-
-    // Wait for the notification that indicates the tensor has been
-    // succesfully transmitted to the remote process. Only needed if we
-    // have not parsed the tensor to proto
-    if (doOptimalTransfer) mpiSC->n.WaitForNotification();
-  };  // cb2
-
-  worker_env_2->compute_pool->Schedule([this, step_id, parsed, cb2]() {
-    this->RecvLocalAsync(step_id, parsed, cb2);
-  });
-}
-
-MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env,
-                                   const string& worker_name,
-                                   WorkerCacheInterface* worker_cache)
-    : BaseRendezvousMgr(env, worker_name),
-      worker_env_2(env),
-      doOptimalPath(false) {
-
-  const char* mpienv = getenv("MPI_OPTIMAL_PATH");
-  if (mpienv && mpienv[0] == '1') {
-    LOG(INFO) << "MPI Optimal copy path enabled (Requires CUDA-Aware MPI when "
-                 "using GPUs)\n";
-    doOptimalPath = true;
-  }
-
-  mpiUtils_ = new MPIUtils(worker_name);
-  requestThread = std::thread(&MPIRendezvousMgr::MPIBackgroundThread, this);
-}
-
-BaseRemoteRendezvous* MPIRendezvousMgr::Create(int64 step_id,
-                                               const WorkerEnv* worker_env,
-                                               const string& worker_name) {
-  return new MPIRemoteRendezvous(worker_env, worker_name, step_id, mpiUtils_,
-                                 this);
-}
-
-void MPIRendezvousMgr::MPIBackgroundThread() {
-  std::list<std::unique_ptr<MPISendTensorCall>> runningSends;
-
-  while (1) {
-    MPI_Status status;
-
-    // Check for incoming Tensor requests
-    RecvTensorRequest mReq;
-    if (probeForData(TAG_REQTENSOR, &status, &mReq)) {
-      this->addRequest(mReq, status.MPI_SOURCE);
-    }
-
-    // Check for incoming Tensor reply
-    MPIRecvTensorResponse mRes;
-    if (probeForData(TAG_SENDTENSOR, &status, &mRes)) {
-      const int64 step_id = mRes.step_id();
-      std::string key = mRes.key();
-
-      std::shared_ptr<MPIRendezvousCall> call;
-      getRecvCall(step_id, key, &call);
-      call->recvCB(mRes);
-      removeRecvCall(step_id, key);
-    }
-
-    // Remove sends that have been completed
-    runningSends.remove_if([](std::unique_ptr<MPISendTensorCall>& i) {
-      return i->isFinished();
-    });
-
-    // send a Tensor request
-    requestQueueEntry req;
-    if (getRequest(&req)) req.second();
-
-    // Send a Tensor response
-    sendQueueEntry send;
-    if (getResponse(&send)) {
-      std::unique_ptr<MPISendTensorCall> p(send.second());
-      runningSends.push_back(std::move(p));
-    }
-
-//    std::this_thread::sleep_for(std::chrono::microseconds(1));
-  }
-}
-
 void MPIRemoteRendezvous::RecvFromRemoteAsync(
     const Rendezvous::ParsedKey& parsed, const Rendezvous::Args& recv_args,
     DoneCallback done) {
 
   Status s = Status::OK();
-  MPIRendezvousCall* reqCall = new MPIRendezvousCall();
+  MPIRequestTensorCall* rendezvous_call = new MPIRequestTensorCall();
 
   VLOG(2) << "MPI User requested " << parsed.FullKey()
           << " @ step: " << step_id_ << std::endl;
 
-  const int dst = mpiUtils_->getSourceID(parsed.FullKey().ToString());
+  const int dst = mpiutils_->GetSourceID(parsed.FullKey().ToString());
 
   Device* dst_device;
   if (s.ok()) {
     s = env_->device_mgr->LookupDevice(parsed.dst_device, &dst_device);
-  }
-  if (!s.ok()) {
+  } else {
     done(s, Args(), recv_args, Tensor{}, false);
     return;
   }
 
   // Set properties of the request object and create the request function
-  reqCall->Init(parsed, step_id_);
+  rendezvous_call->Init(parsed, step_id_);
 
-  std::function<void()> reqTensor = [parsed, dst, reqCall]() {
-    MPICheck(MPI_Isend(reqCall->reqBuff, reqCall->reqBuffSize, MPI_CHAR, dst,
-                       TAG_REQTENSOR, MPI_COMM_WORLD, &reqCall->mpiReq));
+  std::function<void()> request_call = [parsed, dst, rendezvous_call]() {
+    // Use MPI_Alloc_mem here to force allocation inside MPI thread
+    // this is not optimal, but prevents memory corruption and segmentation
+    // faults during inter-server transfers...
+    MPI_CHECK(MPI_Alloc_mem(rendezvous_call->request_buffer_size_,
+                            MPI_INFO_NULL, &rendezvous_call->request_buffer_));
+    rendezvous_call->req_.SerializeToArray(
+        rendezvous_call->request_buffer_,
+        rendezvous_call->request_buffer_size_);
+    MPI_CHECK(MPI_Isend(rendezvous_call->request_buffer_,
+                        rendezvous_call->request_buffer_size_, MPI_CHAR, dst,
+                        TAG_REQTENSOR, MPI_COMM_WORLD,
+                        &rendezvous_call->mpi_request_));
   };
 
   // Create the function which is called when the Tensor is send by remote
   const int64 temp1 = step_id_;
-  reqCall->recvCB = [this, parsed, recv_args, done, dst, temp1, reqCall](
-      MPIRecvTensorResponse mRes) {
+  rendezvous_call->recv_call_ = [this, parsed, recv_args, done, dst, temp1,
+                                 rendezvous_call](MPIRecvTensorResponse mRes) {
     Status s;
     Device* dst_device;
     if (s.ok()) {
@@ -269,22 +93,211 @@ void MPIRemoteRendezvous::RecvFromRemoteAsync(
       const size_t nBytes = tr.tensor().TotalBytes();
       void* data = const_cast<void*>(DMAHelper::base(&tr.tensor()));
       MPI_Status status;
-      MPICheck(MPI_Recv(data, static_cast<int>(nBytes), MPI_BYTE, dst,
-                        TAG_SENDTENSOR2, MPI_COMM_WORLD, &status));
+      MPI_CHECK(MPI_Recv(data, static_cast<int>(nBytes), MPI_BYTE, dst,
+                         TAG_SENDTENSOR2, MPI_COMM_WORLD, &status));
       val = std::move(tr.tensor());
     }
 
     done(s, Args(), recv_args, val, mRes.response().is_dead());
   };
 
-  MPIRendezvousMgr* mgr = dynamic_cast<MPIRendezvousMgr*>(this->rendezvous_mgr);
-  mgr->queueRequest(parsed.FullKey().ToString(), step_id_, std::move(reqTensor),
-                    reqCall);
+  auto mgr = dynamic_cast<MPIRendezvousMgr*>(this->rendezvous_mgr_);
+  mgr->QueueRequest(parsed.FullKey().ToString(), step_id_,
+                    std::move(request_call), rendezvous_call);
 }
 
 MPIRemoteRendezvous::~MPIRemoteRendezvous() {
-  MPIRendezvousMgr* mgr = dynamic_cast<MPIRendezvousMgr*>(this->rendezvous_mgr);
-  mgr->removeStepID(step_id_);
+  auto mgr = dynamic_cast<MPIRendezvousMgr*>(this->rendezvous_mgr_);
+  mgr->RemoveStepID(step_id_);
+}
+
+/*
+ * Add the request for one of our Tensors by a remote process
+ * to the local send/table. The here created callback will
+ * be called once the Tensor data has arrived and is
+ * ready to be send to the remote requester.
+ */
+void MPIRendezvousMgr::AddRequest(RecvTensorRequest request,
+                                  const int mpi_dst) {
+  const int64 step_id = request.step_id();
+  const std::string& key = request.rendezvous_key();
+  Rendezvous::ParsedKey parsed;
+  Status s = Rendezvous::ParseKey(key, &parsed);
+
+  MPIRecvTensorCallBack send_cb = [this, mpi_dst, parsed](
+      const Status& status, const Rendezvous::Args& send_args,
+      const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead,
+      MPISendTensorCall* mpiSC) {
+    // TODO(jbedorf) this should be a loop over max size
+    CHECK(mpiSC->mRes_.ByteSize() < INT_MAX)
+        << "Buffer too large for single transfer";
+    MPI_CHECK(MPI_Alloc_mem(mpiSC->mRes_.ByteSize(), MPI_INFO_NULL,
+                            &mpiSC->send_buffer_));
+    mpiSC->mRes_.SerializeToArray(mpiSC->send_buffer_, mpiSC->mRes_.ByteSize());
+
+    MPI_CHECK(MPI_Isend(
+        mpiSC->send_buffer_, static_cast<int>(mpiSC->mRes_.ByteSize()),
+        MPI_CHAR, mpi_dst, TAG_SENDTENSOR, MPI_COMM_WORLD, &(mpiSC->msg1_)));
+    MPI_CHECK(MPI_Test(&mpiSC->msg1_, &mpiSC->done1_, MPI_STATUS_IGNORE));
+
+    if (!mpiSC->mRes_.singlesend()) {
+      const int tensor_size = static_cast<int>(val.TotalBytes());
+      void* temp = const_cast<void*>(DMAHelper::base(&val));
+
+      // If the MPI library is not GPU aware there should be a data transfer
+      // here to get the data on the host.
+      // if(src_dev->tensorflow_gpu_device_info()) //memcpy to send_buffer2_
+
+      // TODO(jbedorf)  this should be a loop over max size
+      MPI_CHECK(MPI_Isend(temp, tensor_size, MPI_CHAR, mpi_dst, TAG_SENDTENSOR2,
+                          MPI_COMM_WORLD, &mpiSC->msg2_));
+      mpiSC->done2_ = 0;
+    }
+    return mpiSC;
+  };
+
+  // Wrapper around the read callback to place the callback on our queue
+  Rendezvous::DoneCallback done_cb = [this, parsed, step_id, send_cb](
+      const Status& status, const Rendezvous::Args& send_args,
+      const Rendezvous::Args& recv_args, const Tensor& val, bool is_dead) {
+    if (!status.ok()) {
+      CHECK(status.ok()) << "RecvLocalAsync was not ok, key: "
+                         << parsed.FullKey() << " step: " << step_id
+                         << " error message: " << status.error_message();
+      return;
+    }
+
+    VLOG(3) << "MPI Sending tensor " << parsed.FullKey()
+            << " @ step: " << step_id << std::endl;
+
+    auto mpiSC = new MPISendTensorCall();
+    mpiSC->Init(parsed, step_id, is_dead);
+
+    Device* src_dev = nullptr;
+    Status s = this->worker_env_2->device_mgr->LookupDevice(parsed.src_device,
+                                                            &src_dev);
+    CHECK(s.ok()) << "src device not found";
+
+    // Control if shape and data should be send together or if we can optimize
+    // it in two different transfers, thereby reducing memory copies
+    bool doOptimalTransfer = true;
+    if (!DataTypeCanUseMemcpy(val.dtype())) doOptimalTransfer = false;
+    if (val.TotalBytes() < 1024) doOptimalTransfer = false;
+
+    doOptimalTransfer = doOptimalTransfer && use_optimal_transfer_;
+
+    if (doOptimalTransfer) {
+      // First send the Tensor description and in a follow up transfer the data
+      mpiSC->mRes_.mutable_response()->mutable_tensor()->set_dtype(val.dtype());
+      val.shape().AsProto(mpiSC->mRes_.mutable_response()
+                              ->mutable_tensor()
+                              ->mutable_tensor_shape());
+      mpiSC->mRes_.set_singlesend(false);
+    } else {
+      // Send the Tensor description and data in a single transfer
+      if (src_dev->tensorflow_gpu_device_info() &&
+          (!send_args.alloc_attrs.on_host())) {
+        Notification n;
+        GPUUtil::SetProtoFromGPU(
+            val, src_dev, send_args.device_context,
+            mpiSC->mRes_.mutable_response()->mutable_tensor(), is_dead,
+            [&n, &s](const Status& s_) {
+              s = s_;
+              n.Notify();
+            });
+        n.WaitForNotification();
+      } else {
+        val.AsProtoTensorContent(
+            mpiSC->mRes_.mutable_response()->mutable_tensor());
+      }
+    }
+
+    std::function<MPISendTensorCall*()> res =
+        std::bind(send_cb, status, send_args, recv_args, val, is_dead, mpiSC);
+
+    SendQueueEntry req(parsed.FullKey().ToString().c_str(), std::move(res));
+
+    this->QueueSendRequest(req);
+
+    // Wait for the notification that indicates the tensor has been
+    // succesfully transmitted to the remote process. Only needed if we
+    // have not parsed the tensor to proto
+    if (doOptimalTransfer) mpiSC->n_.WaitForNotification();
+  };  // done_cb
+
+  worker_env_2->compute_pool->Schedule([this, step_id, parsed, done_cb]() {
+    this->RecvLocalAsync(step_id, parsed, done_cb);
+  });
+}
+
+MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env,
+                                   const string& worker_name,
+                                   WorkerCacheInterface* worker_cache)
+    : BaseRendezvousMgr(env, worker_name),
+      worker_env_2(env),
+      use_optimal_transfer_(false) {
+
+  const char* mpienv = getenv("MPI_OPTIMAL_PATH");
+  if (mpienv && mpienv[0] == '1') {
+    LOG(INFO) << "MPI Optimal copy path enabled (Requires CUDA-Aware MPI when "
+                 "using GPUs)\n";
+    use_optimal_transfer_ = true;
+  }
+
+  mpiutils_ = new MPIUtils(worker_name);
+  background_thread_ =
+      std::thread(&MPIRendezvousMgr::MPIBackgroundThread, this);
+}
+
+BaseRemoteRendezvous* MPIRendezvousMgr::Create(int64 step_id,
+                                               const WorkerEnv* worker_env,
+                                               const string& worker_name) {
+  return new MPIRemoteRendezvous(worker_env, worker_name, step_id, mpiutils_,
+                                 this);
+}
+
+void MPIRendezvousMgr::MPIBackgroundThread() {
+  std::list<std::unique_ptr<MPISendTensorCall>> active_sends;
+
+  while (1) {
+    MPI_Status status;
+
+    // Check for incoming Tensor requests
+    RecvTensorRequest request;
+    if (ProbeForData(TAG_REQTENSOR, &status, &request)) {
+      this->AddRequest(request, status.MPI_SOURCE);
+    }
+
+    // Check for incoming Tensor reply
+    MPIRecvTensorResponse mRes;
+    if (ProbeForData(TAG_SENDTENSOR, &status, &mRes)) {
+      const int64 step_id = mRes.step_id();
+      std::string key = mRes.key();
+
+      std::shared_ptr<MPIRequestTensorCall> call;
+      GetRecvCall(step_id, key, &call);
+      call->recv_call_(mRes);
+      RemoveRecvCall(step_id, key);
+    }
+
+    // Remove sends that have been completed
+    active_sends.remove_if([](std::unique_ptr<MPISendTensorCall>& i) {
+      return i->IsFinished();
+    });
+
+    // send a Tensor request
+    RequestQueueEntry req;
+    if (GetRequest(&req)) req.second();
+
+    // Send a Tensor response
+    SendQueueEntry send;
+    if (GetResponse(&send)) {
+      std::unique_ptr<MPISendTensorCall> p(send.second());
+      active_sends.push_back(std::move(p));
+    }
+
+    //    std::this_thread::sleep_for(std::chrono::microseconds(1));
+  }
 }
 
 }  // namespace tensorflow

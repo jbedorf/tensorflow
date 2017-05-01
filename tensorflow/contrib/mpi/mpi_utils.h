@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 
 #include "third_party/mpi/mpi.h"
-#define MPICheck(cmd)                                                 \
+#define MPI_CHECK(cmd)                                                \
   do {                                                                \
     int mpi_errno = cmd;                                              \
     if (MPI_SUCCESS != mpi_errno) {                                   \
@@ -36,13 +36,23 @@ limitations under the License.
 
 namespace tensorflow {
 class MPIUtils {
+ public:
+  explicit MPIUtils(const std::string& worker_name);
+
+  const int GetSourceID(const std::string& key) const {
+    auto it = name_to_id_.find(GetWorkerName(key, 0));
+    if (it == name_to_id_.end()) {
+      LOG(FATAL) << "Failed to convert worker name to MPI index: " << key;
+    }
+    return it->second;
+  }
+
  private:
-  const uint kMaxNameLength = 128;
-  std::map<std::string, int> name2id;
+  void InitMPI();
 
   // Returns the name of the destination specified in a rendezvous key
   // For idx=0 it is the source, for idx=2 it is the destination
-  std::string getWorkerName(const std::string& key, const int idx) const {
+  std::string GetWorkerName(const std::string& key, const int idx) const {
     const std::vector<std::string> num_strings = str_util::Split(key, ';');
     // Sanity check, should be 5 src;id;dst;name;frame_iter
     assert(num_strings.size() == 5);
@@ -50,18 +60,7 @@ class MPIUtils {
     return num_strings[idx].substr(0, num_strings[idx].find_last_of('/'));
   }
 
-  void InitMPI();
-
- public:
-  explicit MPIUtils(const std::string& worker_name);
-
-  const int getSourceID(const std::string& key) const {
-    auto it = name2id.find(getWorkerName(key, 0));
-    if (it == name2id.end()) {
-      LOG(FATAL) << "Failed to convert worker name to MPI index: " << key;
-    }
-    return it->second;
-  }
+  std::map<std::string, int> name_to_id_;
 };
 }  // namespace tensorflow
 

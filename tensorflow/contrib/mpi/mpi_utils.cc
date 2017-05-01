@@ -16,49 +16,52 @@ limitations under the License.
 #include "tensorflow/contrib/mpi/mpi_utils.h"
 namespace tensorflow {
 
-void MPIUtils::InitMPI() {
-  // Initialize the MPI environment if that hasn't been done
-  int flag = 0;
-  MPICheck(MPI_Initialized(&flag));
-  if (!flag) {
-    // MPICheck(MPI_Init_thread(0, 0, MPI_THREAD_SINGLE, &flag));
-    MPICheck(MPI_Init(0, 0));
-    int procId = 0, nProcs = 1, len = -1;
-    char procName[kMaxNameLength];
-    MPICheck(MPI_Comm_rank(MPI_COMM_WORLD, &procId));
-    MPICheck(MPI_Comm_size(MPI_COMM_WORLD, &nProcs));
-    MPICheck(MPI_Get_processor_name(procName, &len));
-    fprintf(stderr,
-            "MPI Environment initialised. Process id: %d Total processes: %d "
-            "|| Hostname: %s \n",
-            procId, nProcs, procName);
-  }
-}
+#define max_worker_name_length 128
 
 MPIUtils::MPIUtils(const std::string& worker_name) {
   InitMPI();
   // Connect the MPI process IDs to the worker names that are used by TF.
   // Gather the names of all the active processes (name can't be longer than
   // 128 bytes)
-  int procId = 0, nProcs = 1;
-  MPICheck(MPI_Comm_rank(MPI_COMM_WORLD, &procId));
-  MPICheck(MPI_Comm_size(MPI_COMM_WORLD, &nProcs));
+  int proc_id = 0, number_of_procs = 1;
+  char my_name[max_worker_name_length];
+  MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &proc_id));
+  MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &number_of_procs));
 
-  char myName[kMaxNameLength];
-  CHECK(worker_name.size() < kMaxNameLength)
+  CHECK(worker_name.size() < max_worker_name_length)
       << "Specified worker name is too long.";
-  snprintf(myName, kMaxNameLength, worker_name.c_str());
-  std::vector<char> worker_names(nProcs * kMaxNameLength);
-  MPICheck(MPI_Allgather(myName, kMaxNameLength, MPI_CHAR, &worker_names[0],
-                         kMaxNameLength, MPI_CHAR, MPI_COMM_WORLD));
+  snprintf(my_name, max_worker_name_length, worker_name.c_str());
+  std::vector<char> worker_names(number_of_procs * max_worker_name_length);
+  MPI_CHECK(MPI_Allgather(my_name, max_worker_name_length, MPI_CHAR,
+                          &worker_names[0], max_worker_name_length, MPI_CHAR,
+                          MPI_COMM_WORLD));
 
-  if (procId == 0) LOG(INFO) << "MPI process-ID to gRPC server name map: \n";
-  for (int i = 0; i < nProcs; i++) {
-    name2id[std::string(&worker_names[i * 128])] = i;
-    if (procId == 0)
+  if (proc_id == 0) LOG(INFO) << "MPI process-ID to gRPC server name map: \n";
+  for (int i = 0; i < number_of_procs; i++) {
+    name_to_id_[std::string(&worker_names[i * 128])] = i;
+    if (proc_id == 0)
       LOG(INFO) << "Process: " << i
                 << "\tgRPC-name: " << std::string(&worker_names[i * 128])
                 << std::endl;
+  }
+}
+
+void MPIUtils::InitMPI() {
+  // Initialize the MPI environment if that hasn't been done
+  int flag = 0;
+  MPI_CHECK(MPI_Initialized(&flag));
+  if (!flag) {
+    int proc_id = 0, number_of_procs = 1, len = -1;
+    char my_host_name[max_worker_name_length];
+    // MPI_CHECK(MPI_Init_thread(0, 0, MPI_THREAD_MULTIPLE, &flag));
+    MPI_CHECK(MPI_Init(0, 0));
+    MPI_CHECK(MPI_Comm_rank(MPI_COMM_WORLD, &proc_id));
+    MPI_CHECK(MPI_Comm_size(MPI_COMM_WORLD, &number_of_procs));
+    MPI_CHECK(MPI_Get_processor_name(my_host_name, &len));
+    fprintf(stderr,
+            "MPI Environment initialised. Process id: %d Total processes: %d "
+            "|| Hostname: %s \n",
+            proc_id, number_of_procs, my_host_name);
   }
 }
 
