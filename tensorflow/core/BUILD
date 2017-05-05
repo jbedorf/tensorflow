@@ -155,6 +155,7 @@ CORE_PROTO_SRCS = [
     "framework/versions.proto",
     "lib/core/error_codes.proto",
     "protobuf/config.proto",
+    "protobuf/cluster.proto",
     "protobuf/debug.proto",
     "protobuf/queue_runner.proto",
     "protobuf/rewriter_config.proto",
@@ -507,6 +508,7 @@ tf_gen_op_libs(
         "image_ops",
         "io_ops",
         "linalg_ops",
+        "lookup_ops",
         "logging_ops",
         "math_ops",
         "nn_ops",
@@ -583,6 +585,7 @@ cc_library(
         ":image_ops_op_lib",
         ":io_ops_op_lib",
         ":linalg_ops_op_lib",
+        ":lookup_ops_op_lib",
         ":logging_ops_op_lib",
         ":math_ops_op_lib",
         ":nn_ops_op_lib",
@@ -709,6 +712,7 @@ cc_library(
         "//tensorflow/core/kernels:image",
         "//tensorflow/core/kernels:io",
         "//tensorflow/core/kernels:linalg",
+        "//tensorflow/core/kernels:lookup",
         "//tensorflow/core/kernels:logging",
         "//tensorflow/core/kernels:math",
         "//tensorflow/core/kernels:multinomial_op",
@@ -737,6 +741,7 @@ cc_library(
         "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
         "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
@@ -842,7 +847,7 @@ filegroup(
 
 # Core sources for Android builds.
 filegroup(
-    name = "android_srcs",
+    name = "mobile_srcs",
     srcs = [
         ":proto_text_srcs_all",
         "//tensorflow/core/kernels:android_srcs",
@@ -1284,7 +1289,10 @@ cc_library(
         tf_additional_mpi_lib_defines(),
     linkopts = select({
         "//tensorflow:freebsd": [],
-        "//conditions:default": ["-ldl"],
+        "//conditions:default": [
+            "-ldl",
+            "-lpthread",
+        ],
     }),
     deps = tf_additional_lib_deps() + [
         ":lib_hash_crc32c_accelerate_internal",
@@ -1572,6 +1580,7 @@ tf_cuda_library(
         ":lib_internal",
         ":proto_text",
         ":protos_all_cc",
+        "//tensorflow/core/debug:debug_graph_utils",
         "//tensorflow/core/kernels:function_ops",
     ],
     alwayslink = 1,
@@ -2121,6 +2130,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_concat_op",
         "//tensorflow/core/kernels:mkl_conv_op",
         "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
+        "//tensorflow/core/kernels:mkl_identity_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
         "//tensorflow/core/kernels:mkl_relu_op",
@@ -2221,9 +2231,12 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:sendrecv_ops",
         "//tensorflow/core/kernels:bcast_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:concat_op",
+        "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:identity_op",
         "//tensorflow/core/kernels:immutable_constant_op",
         "//tensorflow/core/kernels:matmul_op",
@@ -2415,6 +2428,9 @@ tf_cc_test(
         ":test_main",
         ":testlib",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:cc_ops_internal",
+        "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/core/kernels:cast_op",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:function_ops",
@@ -2758,4 +2774,10 @@ filegroup(
         ],
     ),
     visibility = ["//tensorflow:__subpackages__"],
+)
+
+alias(
+    name = "android_srcs",
+    actual = ":mobile_srcs",
+    visibility = ["//visibility:public"],
 )

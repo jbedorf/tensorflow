@@ -8,6 +8,19 @@ load("@io_bazel_rules_closure//closure:defs.bzl", "webfiles_external")
 load("//third_party/py:python_configure.bzl", "python_configure")
 
 
+def _is_windows(repository_ctx):
+  """Returns true if the host operating system is windows."""
+  return repository_ctx.os.name.lower().find("windows") != -1
+
+
+def _get_env_var(repository_ctx, name):
+  """Find an environment variable."""
+  if name in repository_ctx.os.environ:
+    return repository_ctx.os.environ[name]
+  else:
+    return None
+
+
 # Parse the bazel version string from `native.bazel_version`.
 def _parse_bazel_version(bazel_version):
   # Remove commit from version.
@@ -74,7 +87,7 @@ temp_workaround_http_archive = repository_rule(
 # Executes specified command with arguments and calls 'fail' if it exited with
 # non-zero code
 def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
-  result = repo_ctx.execute(cmd_and_args)
+  result = repo_ctx.execute(cmd_and_args, timeout=10)
   if result.return_code != 0:
     fail(("Non-zero return code({1}) when executing '{0}':\n" + "Stdout: {2}\n"
           + "Stderr: {3}").format(" ".join(cmd_and_args), result.return_code,
@@ -84,9 +97,15 @@ def _execute_and_check_ret_code(repo_ctx, cmd_and_args):
 # Apply a patch_file to the repository root directory
 # Runs 'patch -p1'
 def _apply_patch(repo_ctx, patch_file):
-  _execute_and_check_ret_code(repo_ctx, [
+  cmd = [
       "patch", "-p1", "-d", repo_ctx.path("."), "-i", repo_ctx.path(patch_file)
-  ])
+  ]
+  if _is_windows(repo_ctx):
+    bazel_sh = _get_env_var(repo_ctx, "BAZEL_SH")
+    if not bazel_sh:
+      fail("BAZEL_SH environment variable is not set")
+    cmd = [bazel_sh, "-c", " ".join(cmd)]
+  _execute_and_check_ret_code(repo_ctx, cmd)
 
 
 # Download the repository and apply a patch to its root
@@ -668,13 +687,13 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
       name = "com_microsoft_typescript",
       licenses = ["notice"],  # Apache 2.0
       sha256_urls = {
-          "43a7c763fe024d5add8d5365e5a7981f4a359ba5bf86481f545a0db8f60d48cc": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/tsc.js",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/tsc.js",
+          "8465342c318f9c4cf0a29b109fa63ee3742dd4dc7080d05d9fd8f604814d04cf": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/tsc.js",
           ],
-          "aecec1e47a3b3d872e214cb9adb82b30d6bd0471ea0aad7311ad81428566627c": [
-              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/lib.es6.d.ts",
-              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.2.2/lib/lib.es6.d.ts",
+          "a67e36da3029d232e4e938e61a0a3302f516d71e7100d54dbf5362ad8618e994": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/lib.es6.d.ts",
+              "https://raw.githubusercontent.com/Microsoft/TypeScript/v2.3.1/lib/lib.es6.d.ts",
           ],
       },
       extra_build_file_content = "\n".join([
@@ -816,6 +835,14 @@ def tf_workspace(path_prefix="", tf_repo_name=""):
           "695a03dd2ccb238161d97160b239ab841562710e5c4e42886aefd4ace2ce152e": [
               "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
               "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/ebc69904eb78f94030d5d517b42db20867f679c0/mocha/mocha.d.ts",
+          ],
+          "44eba36339bd1c0792072b7b204ee926fe5ffe1e9e2da916e67ac55548e3668a": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/a872802c0c84ba98ff207d5e673a1fa867c67fd6/polymer/polymer.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/a872802c0c84ba98ff207d5e673a1fa867c67fd6/polymer/polymer.d.ts",
+          ],
+          "691756a6eb455f340c9e834de0d49fff269e7b8c1799c2454465dcd6a4435b80": [
+              "http://bazel-mirror.storage.googleapis.com/raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
+              "https://raw.githubusercontent.com/DefinitelyTyped/DefinitelyTyped/46719185c564694c5583c4b7ad94dbb786ecad46/webcomponents.js/webcomponents.js.d.ts",
           ],
       },
   )
