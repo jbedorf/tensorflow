@@ -29,17 +29,15 @@ namespace tensorflow {
 
 namespace {
 // static utility function
-RendezvousMgrInterface* NewMPIRendezvousMgr(
-    const WorkerEnv* env, const string& worker_name,
-    WorkerCacheInterface* worker_cache) {
-
+RendezvousMgrInterface* NewMPIRendezvousMgr(const WorkerEnv* env)
+{
   // Runtime check to disable the MPI path
   const char* mpienv = getenv("MPI_DISABLED");
   if (mpienv && mpienv[0] == '1') {
     LOG(INFO) << "MPI path disabled by environment variable\n";
-    return new RpcRendezvousMgr(env, worker_name, worker_cache);
+    return new RpcRendezvousMgr(env);
   } else {
-    return new MPIRendezvousMgr(env, worker_name, worker_cache);
+    return new MPIRendezvousMgr(env);
   }
 }
 

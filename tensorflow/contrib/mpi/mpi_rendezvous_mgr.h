@@ -108,10 +108,10 @@ struct MPIRequestTensorCall {
 
 class MPIRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  MPIRemoteRendezvous(const WorkerEnv* env, const string& worker_name,
+  MPIRemoteRendezvous(const WorkerEnv* env, 
                       int64 step_id, const MPIUtils* util,
                       BaseRendezvousMgr* mgr_)
-      : BaseRemoteRendezvous(env, worker_name, step_id, false),
+      : BaseRemoteRendezvous(env, step_id, false),
         mpiutils_(util),
         rendezvous_mgr_(mgr_) {}
 
@@ -131,8 +131,7 @@ class MPIRemoteRendezvous : public BaseRemoteRendezvous {
 
 class MPIRendezvousMgr : public BaseRendezvousMgr {
  public:
-  explicit MPIRendezvousMgr(const WorkerEnv* env, const string& worker_name,
-                            WorkerCacheInterface* worker_cache);
+  explicit MPIRendezvousMgr(const WorkerEnv* env);
   ~MPIRendezvousMgr() {
     delete mpiutils_;
     fprintf(stderr, "Delete MPIRendezvousMgr \n");
@@ -157,8 +156,7 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
   }
 
  protected:
-  BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env,
-                               const string& session_name) override;
+  BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env                             ) override;
 
  private:
   typedef std::function<MPISendTensorCall*(

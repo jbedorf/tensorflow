@@ -230,10 +230,8 @@ void MPIRendezvousMgr::AddRequest(RecvTensorRequest request,
   });
 }
 
-MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env,
-                                   const string& worker_name,
-                                   WorkerCacheInterface* worker_cache)
-    : BaseRendezvousMgr(env, worker_name),
+MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env) 
+    : BaseRendezvousMgr(env),
       worker_env_2(env),
       use_optimal_transfer_(false) {
 
@@ -244,15 +242,17 @@ MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env,
     use_optimal_transfer_ = true;
   }
 
+  std::string worker_name;
+  //TODO extract worker-name from somewhere
+    
   mpiutils_ = new MPIUtils(worker_name);
   background_thread_ =
       std::thread(&MPIRendezvousMgr::MPIBackgroundThread, this);
 }
 
 BaseRemoteRendezvous* MPIRendezvousMgr::Create(int64 step_id,
-                                               const WorkerEnv* worker_env,
-                                               const string& worker_name) {
-  return new MPIRemoteRendezvous(worker_env, worker_name, step_id, mpiutils_,
+                                               const WorkerEnv* worker_env){
+  return new MPIRemoteRendezvous(worker_env, step_id, mpiutils_,
                                  this);
 }
 
