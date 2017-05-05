@@ -29,8 +29,7 @@ namespace tensorflow {
 
 namespace {
 // static utility function
-RendezvousMgrInterface* NewMPIRendezvousMgr(const WorkerEnv* env)
-{
+RendezvousMgrInterface* NewMPIRendezvousMgr(const WorkerEnv* env) {
   // Runtime check to disable the MPI path
   const char* mpienv = getenv("MPI_DISABLED");
   if (mpienv && mpienv[0] == '1') {

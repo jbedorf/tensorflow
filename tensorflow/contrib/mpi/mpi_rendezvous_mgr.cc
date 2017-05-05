@@ -230,10 +230,8 @@ void MPIRendezvousMgr::AddRequest(RecvTensorRequest request,
   });
 }
 
-MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env) 
-    : BaseRendezvousMgr(env),
-      worker_env_2(env),
-      use_optimal_transfer_(false) {
+MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env)
+    : BaseRendezvousMgr(env), worker_env_2(env), use_optimal_transfer_(false) {
 
   const char* mpienv = getenv("MPI_OPTIMAL_PATH");
   if (mpienv && mpienv[0] == '1') {
@@ -242,18 +240,18 @@ MPIRendezvousMgr::MPIRendezvousMgr(const WorkerEnv* env)
     use_optimal_transfer_ = true;
   }
 
-  std::string worker_name;
-  //TODO extract worker-name from somewhere
-    
+  // extract worker-name from somewhere
+  std::string worker_name = env->local_devices[0]->name();
+  worker_name = worker_name.substr(0, worker_name.rfind('/'));  // Strip device
+
   mpiutils_ = new MPIUtils(worker_name);
   background_thread_ =
       std::thread(&MPIRendezvousMgr::MPIBackgroundThread, this);
 }
 
 BaseRemoteRendezvous* MPIRendezvousMgr::Create(int64 step_id,
-                                               const WorkerEnv* worker_env){
-  return new MPIRemoteRendezvous(worker_env, step_id, mpiutils_,
-                                 this);
+                                               const WorkerEnv* worker_env) {
+  return new MPIRemoteRendezvous(worker_env, step_id, mpiutils_, this);
 }
 
 void MPIRendezvousMgr::MPIBackgroundThread() {

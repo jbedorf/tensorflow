@@ -108,8 +108,7 @@ struct MPIRequestTensorCall {
 
 class MPIRemoteRendezvous : public BaseRemoteRendezvous {
  public:
-  MPIRemoteRendezvous(const WorkerEnv* env, 
-                      int64 step_id, const MPIUtils* util,
+  MPIRemoteRendezvous(const WorkerEnv* env, int64 step_id, const MPIUtils* util,
                       BaseRendezvousMgr* mgr_)
       : BaseRemoteRendezvous(env, step_id, false),
         mpiutils_(util),
@@ -156,7 +155,8 @@ class MPIRendezvousMgr : public BaseRendezvousMgr {
   }
 
  protected:
-  BaseRemoteRendezvous* Create(int64 step_id, const WorkerEnv* worker_env                             ) override;
+  BaseRemoteRendezvous* Create(int64 step_id,
+                               const WorkerEnv* worker_env) override;
 
  private:
   typedef std::function<MPISendTensorCall*(
