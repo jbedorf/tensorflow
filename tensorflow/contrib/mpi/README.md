@@ -1,3 +1,8 @@
+## Overview
+
+By using this communication method TensorFlow takes advantage of the networkinging primitives offered via the MPI API. This enables TensorFlow to take advantage of high performance low latency networks such as Infiniband. The changes are largely transparent to the user who only has to change the protocol defintion and launch the script using the 'mpirun'  launcher. For example:
+    ```mpirun -np 2 python my_neuralnet.py ```
+
 ## How to compile and use MPI-enabled TensorFlow
 
 1. Follow the regular TF compilation instructions. During configure step, if you want MPI support, answer yes to this question:
@@ -7,14 +12,6 @@
 2. To turn on the MPI connection, add the protocol "grpc+mpi" in the server definition:
 
     ```server = tf.train.Server(cluster, job_name="local", task_index=0, protocol='grpc+mpi') # default protocol is 'grpc'```
-
-## Overview
-
-By using this protocol the TensorFlow can take advantage of the high performance networking primitives that are offered via the MPI API. This enables TensorFlow to take advantage of high performance low latency networks such as Infiniband. These changes are largely transparent to the user who only has to change the offered protocol and launch the script using the 'mpirun'  launcher. For example:
-    ```mpirun -np 2 python my_neuralnet.py ```
-
-
-
 
 
 ## Runtime options
@@ -29,7 +26,6 @@ This environment variable allows you to disable the MPI path before launch (e.g.
 
 When set to 0 it will use the default path where tensors are encoded to ProtoText before being copied to a remote process. When set to 1 a more optimal path will be taken where only the tensor description is encoded while the actual tensor data is transferred directly from the source buffer to the destination buffer.
 This path is disabled by default as it requires that MPI library can directly access the pointer to the data. For CPU backed buffers this is no problem, however for GPU backed buffers this requires MPI libraries that are built with CUDA support (CUDA Aware). When using non-CUDA aware MPI libraries and GPU buffers you will get segmentation faults.
-
 
 
 ## Known problems
@@ -64,18 +60,6 @@ At some point after a request has been send the remote process will transmit the
 
 In the implementation all send operations are non-blocking, all probe operations are non-blocking and all receive-operations are blocking. The receive-operations are only executed after the probe has determined that there is something to receive. 
 The MPI processes identify each other using an MPI process ID. The TensorFlow gRPC processes identify each other using a name, during launch we create a mapping between the TensorFlow process name and the MPI process ID to allow the processes to communicate with the correct destinations when using MPI operations.
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
